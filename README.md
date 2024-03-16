@@ -14,4 +14,4 @@ docker exec kohana_php php /var/www/html/index.php --task=db:migrate --fresh=tru
 docker exec kohana_php php /var/www/html/index.php --task=db:seed
 ```
 
-### DONT USE `--fresh=true` IF YOU DONT WANT TO DROP ALL TABLES
+### DONT USE `--fresh=true` IF YOU DONT WANT TO DROP ALL TABLES, ONLY ON FIRST RUN
