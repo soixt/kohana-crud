@@ -27,51 +27,16 @@ class Task_DB_Migrate extends Minion_Task {
                 $this->fresh();
             }
 
-            // Check if the migrations table exists
-            $migrationsResult = DB::select('name')->from('migrations')->execute();
-            $existingMigrations = $migrationsResult->as_array(null, 'name');
-        
-            // Retrieve the list of migration files
-            $migrationFiles = scandir(MIGRATIONS_PATH);
-            $migrationFiles = array_diff($migrationFiles, ['.', '..']); // Remove . and ..
-            
-            // Remove .php extension from migration filenames
-            $migrationFilesWithoutExtension = array_map(function ($file) {
-                return pathinfo($file, PATHINFO_FILENAME);
-            }, $migrationFiles);
-
-            // Find new migrations
-            $newMigrations = array_diff($migrationFilesWithoutExtension, $existingMigrations);
-
-        
-            if (count($newMigrations) > 0) {
-                // Execute new migrations
-                foreach ($newMigrations as $migrationClass) {
-                    // Execute the migration file
-                    include_once MIGRATIONS_PATH . $migrationClass . '.php';
-
-                    // Run migration
-                    $callableClass = (strpos($migrationClass, '_') !== false) ? explode('_', $migrationClass)[1] : $migrationClass;
-                    $callableClass::execute();
-
-                    // Insert the migration into the migrations table
-                    $insert = DB::insert('migrations')
-                        ->columns(['name'])
-                        ->values([$migrationClass]);
-                    $insert->execute();
-                    Minion_CLI::write("Migration $migrationClass executed successfully.");
-                }
-            } else {
-                Minion_CLI::write("Nothing to migrate.");
-            }
+            $this->migrate();
         } catch (Database_Exception $e) {
             // Check if the error message or error code indicates that the database doesn't exist
             if ($e->getCode() === '42S02' && strpos($e->getMessage(), "migrations") !== false && strpos($e->getMessage(), "doesn't exist") !== false) {
                 // If the migrations table doesn't exist, create it
                 $this->createMigrationsTable();
-        
                 // Output a success message
                 Minion_CLI::write('Migrations table created successfully.');
+                // Re-run other migrations
+                $this->migrate();
             } else {
                 // If the exception is for something else, re-throw it to propagate the exception
                 throw $e;
@@ -94,24 +59,6 @@ class Task_DB_Migrate extends Minion_Task {
 
         // Execute the query using Kohana's database module
         Database::instance()->query(Database::INSERT, $query);
-
-        $this->insertMigration();
-    }
-
-    /**
-     * Insert migration record into migrations table.
-     *
-     * @return void
-     */
-    protected function insertMigration() {
-        // Define the query to insert migration record
-        $query = "INSERT INTO migrations (name) VALUES ('CreateMigrationsTable')";
-        $query = "INSERT INTO migrations (name) VALUES ('CreateUsersTable')";
-
-        // Execute the query using Kohana's database module
-        Database::instance()->query(Database::INSERT, $query);
-
-        $this->_execute([]);
     }
 
     /**
@@ -136,5 +83,45 @@ class Task_DB_Migrate extends Minion_Task {
     
         // Re-enable foreign key checks
         $db->query(Database::INSERT, 'SET FOREIGN_KEY_CHECKS = 1;');
-    }    
+    }
+
+    protected function migrate () {
+        // Check if the migrations table exists
+        $migrationsResult = DB::select('name')->from('migrations')->execute();
+        $existingMigrations = $migrationsResult->as_array(null, 'name');
+    
+        // Retrieve the list of migration files
+        $migrationFiles = scandir(MIGRATIONS_PATH);
+        $migrationFiles = array_diff($migrationFiles, ['.', '..']); // Remove . and ..
+        
+        // Remove .php extension from migration filenames
+        $migrationFilesWithoutExtension = array_map(function ($file) {
+            return pathinfo($file, PATHINFO_FILENAME);
+        }, $migrationFiles);
+
+        // Find new migrations
+        $newMigrations = array_diff($migrationFilesWithoutExtension, $existingMigrations);
+
+    
+        if (count($newMigrations) > 0) {
+            // Execute new migrations
+            foreach ($newMigrations as $migrationClass) {
+                // Execute the migration file
+                include_once MIGRATIONS_PATH . $migrationClass . '.php';
+
+                // Run migration
+                $callableClass = (strpos($migrationClass, '_') !== false) ? explode('_', $migrationClass)[1] : $migrationClass;
+                $callableClass::execute();
+
+                // Insert the migration into the migrations table
+                $insert = DB::insert('migrations')
+                    ->columns(['name'])
+                    ->values([$migrationClass]);
+                $insert->execute();
+                Minion_CLI::write("Migration $migrationClass executed successfully.");
+            }
+        } else {
+            Minion_CLI::write("Nothing to migrate.");
+        }
+    }
 }
